@@ -8,20 +8,22 @@ import datetime
 import BatchDatsetReader as dataset
 from six.moves import xrange
 
+import os.path as osp
+
 FLAGS = tf.flags.FLAGS
 tf.flags.DEFINE_integer("batch_size", "2", "batch size for training")
-tf.flags.DEFINE_string("logs_dir", "logs/", "path to logs directory")
-tf.flags.DEFINE_string("data_dir", "Data_zoo/MIT_SceneParsing/", "path to dataset")
+tf.flags.DEFINE_string("logs_dir", r"E:\work\01-Myproject\imag_division\FCN.tensorflow-master\logs", "path to logs directory")
+tf.flags.DEFINE_string("data_dir", r"E:\work\01-Myproject\imag_division\FCN.tensorflow-master\Data_zoo\STEM", "path to dataset")
 tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Adam Optimizer")
-tf.flags.DEFINE_string("model_dir", "Model_zoo/", "Path to vgg model mat")
+tf.flags.DEFINE_string("model_dir", r"E:\work\01-Myproject\imag_division\FCN.tensorflow-master\Model_zoo", "Path to vgg model mat")
 tf.flags.DEFINE_bool('debug', "False", "Debug mode: True/ False")
 tf.flags.DEFINE_string('mode', "train", "Mode train/ test/ visualize")
 
 MODEL_URL = 'http://www.vlfeat.org/matconvnet/models/beta16/imagenet-vgg-verydeep-19.mat'
 
-MAX_ITERATION = int(1e5 + 1)
-NUM_OF_CLASSESS = 151
-IMAGE_SIZE = 224
+MAX_ITERATION = 100  #最大步数
+NUM_OF_CLASSESS = 3  #分类数目
+IMAGE_SIZE = 2048 #图像大小
 
 
 def vgg_net(weights, image):
@@ -143,21 +145,30 @@ def train(loss_val, var_list):
 def main(argv=None):
     keep_probability = tf.placeholder(tf.float32, name="keep_probabilty")
     image = tf.placeholder(tf.float32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 3], name="input_image")
+
+#debug
     annotation = tf.placeholder(tf.int32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 1], name="annotation")
+#    annotation = tf.placeholder(tf.int32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 3], name="annotation")
 
     pred_annotation, logits = inference(image, keep_probability)
     tf.summary.image("input_image", image, max_outputs=2)
     tf.summary.image("ground_truth", tf.cast(annotation, tf.uint8), max_outputs=2)
     tf.summary.image("pred_annotation", tf.cast(pred_annotation, tf.uint8), max_outputs=2)
+
+#debug
     loss = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits,
                                                                           labels=tf.squeeze(annotation, squeeze_dims=[3]),
                                                                           name="entropy")))
+
+#    loss = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits,
+#                                                                          labels=annotation,
+#                                                                          name="entropy")))
+
     loss_summary = tf.summary.scalar("entropy", loss)
 
     trainable_var = tf.trainable_variables()
     if FLAGS.debug:
-        for var in trainable_var:
-            utils.add_to_regularization_and_summary(var)
+        for var in trainable_var:            utils.add_to_regularization_and_summary(var)
     train_op = train(loss, trainable_var)
 
     print("Setting up summary op...")
@@ -169,7 +180,7 @@ def main(argv=None):
     print(len(valid_records))
 
     print("Setting up dataset reader")
-    image_options = {'resize': True, 'resize_size': IMAGE_SIZE}
+    image_options = {'resize': False, 'resize_size': IMAGE_SIZE}  #不要resize，否则label.png会变成图片形式
     if FLAGS.mode == 'train':
         train_dataset_reader = dataset.BatchDatset(train_records, image_options)
     validation_dataset_reader = dataset.BatchDatset(valid_records, image_options)
@@ -181,8 +192,8 @@ def main(argv=None):
 
     # create two summary writers to show training loss and validation loss in the same graph
     # need to create two folders 'train' and 'validation' inside FLAGS.logs_dir
-    train_writer = tf.summary.FileWriter(FLAGS.logs_dir + '/train', sess.graph)
-    validation_writer = tf.summary.FileWriter(FLAGS.logs_dir + '/validation')
+    train_writer = tf.summary.FileWriter(osp.join(FLAGS.logs_dir , 'train'), sess.graph)
+    validation_writer = tf.summary.FileWriter(osp.join(FLAGS.logs_dir , 'validation'))
 
     sess.run(tf.global_variables_initializer())
     ckpt = tf.train.get_checkpoint_state(FLAGS.logs_dir)
@@ -196,7 +207,7 @@ def main(argv=None):
             feed_dict = {image: train_images, annotation: train_annotations, keep_probability: 0.85}
 
             sess.run(train_op, feed_dict=feed_dict)
-
+            
             if itr % 10 == 0:
                 train_loss, summary_str = sess.run([loss, loss_summary], feed_dict=feed_dict)
                 print("Step: %d, Train_loss:%g" % (itr, train_loss))
@@ -211,7 +222,8 @@ def main(argv=None):
                 # add validation loss to TensorBoard
                 validation_writer.add_summary(summary_sva, itr)
                 saver.save(sess, FLAGS.logs_dir + "model.ckpt", itr)
-
+            
+            
     elif FLAGS.mode == "visualize":
         valid_images, valid_annotations = validation_dataset_reader.get_random_batch(FLAGS.batch_size)
         pred = sess.run(pred_annotation, feed_dict={image: valid_images, annotation: valid_annotations,
