@@ -35,7 +35,10 @@ class BatchDatset:
         self.images = np.array([self._transform(filename['image']) for filename in self.files])
         self.__channels = False
         self.annotations = np.array(
+#debug
             [np.expand_dims(self._transform(filename['annotation']), axis=3) for filename in self.files])
+#            [self._transform(filename['annotation']) for filename in self.files])
+        
         print (self.images.shape)
         print (self.annotations.shape)
 
@@ -47,7 +50,8 @@ class BatchDatset:
         if self.image_options.get("resize", False) and self.image_options["resize"]:
             resize_size = int(self.image_options["resize_size"])
             resize_image = misc.imresize(image,
-                                         [resize_size, resize_size], interp='nearest')
+                                         [resize_size, resize_size], interp='nearest')  #此处修改了label的值，从label的值变成了RGB的值，所以不要
+ 
         else:
             resize_image = image
 
